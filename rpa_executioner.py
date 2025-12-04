@@ -10,9 +10,8 @@ import dotenv
 dotenv.load_dotenv()
 
 async def human_option_select(page, dropdown_selector, option_text):
-    await human_button_click(page, dropdown_selector)
-    await asyncio.sleep(random.uniform(0.3, 0.9))
-    await human_button_click(page, exact_text=option_text, check_exists=True)
+    dropDownList = page.locator(dropdown_selector)
+    await dropDownList.select_option(option_text)
     
 async def human_button_click(page, selector=None, has_text=None ,exact_text=None, check_exists=False):
     if exact_text:
@@ -42,11 +41,16 @@ async def human_button_click(page, selector=None, has_text=None ,exact_text=None
 
 async def human_type(page, selector, text):
     element = page.locator(selector).first
-    
+
     await element.hover()
     await asyncio.sleep(random.uniform(0.2,0.5))
-    
+
     await element.click()
+
+    # Clear the field by selecting all and deleting (human-like behavior)
+    await page.keyboard.press("Control+a")
+    await asyncio.sleep(random.uniform(0.1, 0.2))
+
     await element.type(text, delay=random.randint(50,150))
     
 async def RPAexecutioner_Fill(name_surname, collection_type, amount):
@@ -90,7 +94,7 @@ async def RPAexecutioner_Fill(name_surname, collection_type, amount):
         
         await asyncio.sleep(random.uniform(1.7, 3.7))
         
-        await human_button_click(page, exact_text="ÖDEME", check_exists=True)
+        await human_button_click(page, "a:visible", has_text="ÖDEME")
 
         await asyncio.sleep(random.uniform(0.8, 1.8))
         
@@ -102,11 +106,11 @@ async def RPAexecutioner_Fill(name_surname, collection_type, amount):
         
         await asyncio.sleep(random.uniform(0.9, 3.1))
         
-        await human_type(page, "#yenitahsilat_tutar", amount)
+        await human_type(page, "#yenitahsilat_tutar", str(amount))
         
         await asyncio.sleep(random.uniform(0.7, 2.1))
         
-        await human_button_click(page, "button.btn.btn-success")
+        await human_button_click(page, "button", has_text="ÖDETTİR")
         
         await asyncio.sleep(random.uniform(1.6, 3.1))
         
