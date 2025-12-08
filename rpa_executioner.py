@@ -63,7 +63,7 @@ async def RPAexecutioner_readfile(filename, sheetname):
     return [people, payments, tag]
 
 
-async def RPAexecutioner_GoldenProcessStart(filename, sheetname):
+async def RPAexecutioner_GoldenProcessStart(filename=None, sheetname=None):
     async with Stealth().use_async(async_playwright()) as playwright:
         payments_recorded_by_bot = []
         chromium = playwright.chromium
@@ -110,9 +110,8 @@ async def RPAexecutioner_GoldenProcessStart(filename, sheetname):
         
         await asyncio.sleep(random.uniform(1.7, 3.7))
 
-        
-
         payment_information = await RPAexecutioner_readfile(filename, sheetname)
+
         prev_human_name = ""
         search_new_person = True
         for i in range(len(payment_information[0])):

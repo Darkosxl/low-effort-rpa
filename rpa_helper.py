@@ -2,6 +2,7 @@ import asyncio
 import random
 import time
 import os
+from twilio.rest import Client
 import pandas as pd
 import easyocr
 from ollama import chat
@@ -384,3 +385,5 @@ async def get_payment_type(page, name_surname, payment_amount, search_new_person
                 payment_types.append(["DORTBIN", "FLAG: 4000"])
 
     return payment_types
+
+
