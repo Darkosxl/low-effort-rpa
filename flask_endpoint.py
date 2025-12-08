@@ -142,26 +142,22 @@ def reply_whatsapp():
                 wp_response.message("Anlasilmadi veya islem gerektirmiyor: " + message)
                 
             elif "name" in llm_output:
-            payment_type = "?"  
-            payment_amount = "0"
-            owed = False
-            checker = 0
-            for i in len(df["solved"]):
-                if df["solved"][i] == "unsolved":
-                    owed = df["owed"][i]
-                    payment_type = df["payment_type"][i]
-                    payment_amount = df["payment_amount"][i]
-                    checker = i
-                    break
-            df["solved"][checker] = "solved"
-            df["name"][checker] = llm_output
-            df.to_excel("result_table.xlsx", index=False)
-            rpaexec.RPAexecutioner_GoldenUniqueProcess(name=llm_output, payment_type=payment_type, payment_amount=payment_amount, is_owed=owed)
-        
-
-
-
-            wp_response.message(llm_output + " adi ogrenilen Vatandasin odemesi Golden'a giris yapildi: " + payment_type + " " + payment_amount)
+                payment_type = "?"  
+                payment_amount = "0"
+                owed = False
+                checker = 0
+                for i in len(df["solved"]):
+                    if df["solved"][i] == "unsolved":
+                        owed = df["owed"][i]
+                        payment_type = df["payment_type"][i]
+                        payment_amount = df["payment_amount"][i]
+                        checker = i
+                        break
+                df["solved"][checker] = "solved"
+                df["name"][checker] = llm_output
+                df.to_excel("result_table.xlsx", index=False)
+                rpaexec.RPAexecutioner_GoldenUniqueProcess(name=llm_output, payment_type=payment_type, payment_amount=payment_amount, is_owed=owed)
+                wp_response.message(llm_output + " adi ogrenilen Vatandasin odemesi Golden'a giris yapildi: " + payment_type + " " + payment_amount)
             elif "payment_type" in llm_output:
                 payment_type = "?"  
                 payment_amount = "0"
@@ -179,6 +175,10 @@ def reply_whatsapp():
                 df.to_excel("result_table.xlsx", index=False)
                 rpaexec.RPAexecutioner_GoldenUniqueProcess(name=name, payment_type=llm_output, payment_amount=payment_amount, is_owed=owed)
                 wp_response.message(llm_output + " Vatandasin ogrenilen odemesi Golden'a giris yapildi: " + payment_type + " " + payment_amount)
+
+        except Exception as e:
+            print(f"Error processing text message: {e}")
+            wp_response.message("Bir hata olustu: " + str(e))
 
         return Response(str(wp_response), mimetype="text/xml")
 

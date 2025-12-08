@@ -156,21 +156,37 @@ async def get_payment_type(page, name_surname, payment_amount, search_new_person
 
         print("Clicking KURSİYER ARA...")
         await human_button_click(page, "a.btn.bg-orange", has_text="KURSİYER ARA")
-        
         await asyncio.sleep(random.uniform(1.7, 3.7))
         
         await human_type(page, "#txtaraadi", name_surname)
-
         await asyncio.sleep(random.uniform(0.8, 1.8))
-
         await page.keyboard.press("Enter")
-
         await asyncio.sleep(random.uniform(1.7, 3.7))
+
+        # Dead screen check - verify the page loaded correctly
+        success_indicator = page.locator("text=TC Kimlik").first
+        try:
+            await success_indicator.wait_for(state="visible", timeout=3000)
+        except:
+            # First attempt failed - retry with just surname
+            print(f"Dead screen detected - retrying with surname only...")
+            await human_button_click(page, "a.btn.bg-orange", has_text="KURSİYER ARA")
+            await asyncio.sleep(random.uniform(1.7, 3.7))
+            
+            await human_type(page, "#txtaraadi", name_surname.split(" ")[1])
+            await asyncio.sleep(random.uniform(0.8, 1.8))
+            await page.keyboard.press("Enter")
+            await asyncio.sleep(random.uniform(1.7, 3.7))
+            
+            try:
+                await success_indicator.wait_for(state="visible", timeout=3000)
+            except:
+                print(f"Both attempts failed for '{name_surname}'")
+                return ["ISIM BULUNAMADI", "FLAG: 404"]
 
         await human_button_click(page, "a", has_text=name_surname)
-
         await asyncio.sleep(random.uniform(1.7, 3.7))
-
+        
         await human_button_click(page, "a:visible", has_text="ÖDEME")
         print("in the ODEME page")
 

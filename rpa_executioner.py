@@ -144,6 +144,9 @@ async def RPAexecutioner_GoldenProcessStart(filename=None, sheetname=None):
             
             for info in payment_type:
                 print(f"Processing info: {info}")
+                if info[1] == "FLAG: 404":
+                    payments_recorded_by_bot.append([name_surname, payment_information[1][i], info[0], "FLAG: 404"])
+                    print("Name not found, skipping")
                 if info[1] == "FLAG: 4000":
                     payments_recorded_by_bot.append([name_surname, payment_information[1][i], info[0], "FLAG: 4000"])
                     print("Payment amount is 4000, skipping")
@@ -184,7 +187,7 @@ async def RPAexecutioner_GoldenProcessStart(filename=None, sheetname=None):
                         print("Payment completed.")
                         await asyncio.sleep(random.uniform(2.1, 3.1))
                         total_paid -= total_paid
-                    payments_recorded_by_bot.append([name_surname, payment_information[1][i], info[0], "BORC ODENDI"])
+                    payments_recorded_by_bot.append([name_surname, payment_information[1][i], info[0], "PAID"])
                     print("round done")
                 #elif info[1] == "BORC YOK":
                 #    golden_PaymentOwed(page, info[0], payment_information[1][i])
@@ -197,7 +200,7 @@ async def RPAexecutioner_GoldenProcessStart(filename=None, sheetname=None):
             prev_human_name = name_surname    
                 
             
-        df = pd.DataFrame(payments_recorded_by_bot, columns=["name", "payment_amount", "payment_type", "solved", "owed"])
+        df = pd.DataFrame(payments_recorded_by_bot, columns=["name", "payment_amount", "payment_type", "status"])
         df.to_csv("payments_recorded_by_bot.csv", index=False)
         
         is_bot = await page.evaluate("navigator.webdriver")
