@@ -6,7 +6,7 @@ import pandas as pd
 import easyocr
 from ollama import chat
 from ollama import ChatResponse
-
+import re
 from playwright.async_api import async_playwright
 from playwright_stealth import Stealth
 import dotenv
@@ -27,7 +27,51 @@ async def human_button_click(page, selector=None, has_text=None ,exact_text=None
     elif has_text:
         element = page.locator(selector, has_text=has_text).first
     elif selector:
-        element = page.locator(selector).first
+        element = page.locator(selector).firstasync def get_human_name(description):
+
+    if re.findall("^FAST", description):
+        parts = re.split("-", description)
+        #isim
+        name = parts[1]  
+        #aciklama
+        info = parts[2]
+        #print("FAST",name,info)
+        if len(info) == 0:
+            return name
+        else:
+            response: ChatResponse = chat(model='gemma3', messages=[
+            {
+                'role': 'user',
+                'content': 'Your task is to ONLY respond with "yes" or "no". Is there a name of a person in this description. If you see nothing, say "no":' + info,
+            },
+            ])
+            #print(response['message']['content'])
+            if operator.contains(response['message']['content'],"yes"):
+                return info
+            else:
+                return name
+
+    elif re.findall("^CEP ŞUBE", description):
+        parts = re.split("-", description)
+        info = parts[2]
+        name = parts[3]
+        #print("CEP",name,info.strip()+"info")
+        if len(info.strip()) == 0:
+            return name
+        else:
+            response: ChatResponse = chat(model='gemma3', messages=[
+            {
+                'role': 'user',
+                'content': 'Your task is to ONLY respond with "yes" or "no". Is there a name of a person in this description. If you see nothing, say "no":' + info,
+            },
+            ])
+            #print(response['message']['content'])
+            if operator.contains(response['message']['content'],"yes"):
+                return info
+            else:
+                return name
+    
+    return "Error 401: No name found"
     else:
         print("No selector provided")
         return
@@ -62,14 +106,51 @@ async def human_type(page, selector, text):
     await element.type(text, delay=random.randint(50,150))
 
 async def get_human_name(description):
-    response: ChatResponse = chat(model='gemma3', messages=[
-  {
-    'role': 'user',
-    'content': 'Extract the person\'s name and surname EXACTLY as they appear in the text. \n\nCRITICAL RULES:\n1. Do NOT correct ANYTHING (e.g., if it says "SEYİTHAN", do NOT change it to "SEYİHAN").\n2. Do NOT expand names.\n3. Output ONLY the name in all upper case with Turkish characters.\n4. If multiple names are present, output ONLY the first one.\n5. One exception: "onur celik yz" -> "ONUR ÇELİK YZ".\n6. If no name is found, output "ERROR: 404".\n\nInput Text: ' + description,
-  },
-])
+
+    if re.findall("^FAST", description):
+        parts = re.split("-", description)
+        #isim
+        name = parts[1]  
+        #aciklama
+        info = parts[2]
+        #print("FAST",name,info)
+        if len(info) == 0:
+            return name
+        else:
+            response: ChatResponse = chat(model='gemma3', messages=[
+            {
+                'role': 'user',
+                'content': 'Your task is to ONLY respond with "yes" or "no". Is there a name of a person in this description. If you see nothing, say "no":' + info,
+            },
+            ])
+            #print(response['message']['content'])
+            if operator.contains(response['message']['content'],"yes"):
+                return info
+            else:
+                return name
+
+    elif re.findall("^CEP ŞUBE", description):
+        parts = re.split("-", description)
+        info = parts[2]
+        name = parts[3]
+        #print("CEP",name,info.strip()+"info")
+        if len(info.strip()) == 0:
+            return name
+        else:
+            response: ChatResponse = chat(model='gemma3', messages=[
+            {
+                'role': 'user',
+                'content': 'Your task is to ONLY respond with "yes" or "no". Is there a name of a person in this description. If you see nothing, say "no":' + info,
+            },
+            ])
+            #print(response['message']['content'])
+            if operator.contains(response['message']['content'],"yes"):
+                return info
+            else:
+                return name
     
-    return response['message']['content']
+    return "Error 401: No name found"   
+
 
 async def clean_payment_row(row_text):
     # Use LLM to clean the messy OCR row into a structured format
