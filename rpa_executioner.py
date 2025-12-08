@@ -197,7 +197,7 @@ async def RPAexecutioner_GoldenProcessStart(filename=None, sheetname=None):
             prev_human_name = name_surname    
                 
             
-        df = pd.DataFrame(payments_recorded_by_bot, columns=["Name", "Amount", "Payment Type", "Status"])
+        df = pd.DataFrame(payments_recorded_by_bot, columns=["name", "payment_amount", "payment_type", "solved", "owed"])
         df.to_csv("payments_recorded_by_bot.csv", index=False)
         
         is_bot = await page.evaluate("navigator.webdriver")
@@ -206,6 +206,7 @@ async def RPAexecutioner_GoldenProcessStart(filename=None, sheetname=None):
                 
         
         await browser.close()
+        return df
 
         
 async def RPAexecutioner_GoldenUniqueProcess(name_surname=None, payment_type=None, payment_amount=None, is_owed=False):
@@ -282,5 +283,5 @@ async def RPAexecutioner_GoldenUniqueProcess(name_surname=None, payment_type=Non
 
 
 
-print(asyncio.run(RPAexecutioner_GoldenProcessStart("belgev3.xls", "hesaphareketleri")))
+    print(asyncio.run(RPAexecutioner_GoldenProcessStart("belgev3.xls", "hesaphareketleri")))
 

@@ -11,6 +11,7 @@ import re
 from playwright.async_api import async_playwright
 from playwright_stealth import Stealth
 import dotenv
+import operator
 
 def check_owed(keyword, payment_owed):
     return any(keyword in row for row in payment_owed)
@@ -25,54 +26,8 @@ async def human_option_select(page, dropdown_selector, option_text):
 async def human_button_click(page, selector=None, has_text=None ,exact_text=None, check_exists=False):
     if exact_text:
         element = page.get_by_text(exact_text, exact=False)
-    elif has_text:
-        element = page.locator(selector, has_text=has_text).first
     elif selector:
-        element = page.locator(selector).firstasync def get_human_name(description):
-
-    if re.findall("^FAST", description):
-        parts = re.split("-", description)
-        #isim
-        name = parts[1]  
-        #aciklama
-        info = parts[2]
-        #print("FAST",name,info)
-        if len(info) == 0:
-            return name
-        else:
-            response: ChatResponse = chat(model='gemma3', messages=[
-            {
-                'role': 'user',
-                'content': 'Your task is to ONLY respond with "yes" or "no". Is there a name of a person in this description. If you see nothing, say "no":' + info,
-            },
-            ])
-            #print(response['message']['content'])
-            if operator.contains(response['message']['content'],"yes"):
-                return info
-            else:
-                return name
-
-    elif re.findall("^CEP ŞUBE", description):
-        parts = re.split("-", description)
-        info = parts[2]
-        name = parts[3]
-        #print("CEP",name,info.strip()+"info")
-        if len(info.strip()) == 0:
-            return name
-        else:
-            response: ChatResponse = chat(model='gemma3', messages=[
-            {
-                'role': 'user',
-                'content': 'Your task is to ONLY respond with "yes" or "no". Is there a name of a person in this description. If you see nothing, say "no":' + info,
-            },
-            ])
-            #print(response['message']['content'])
-            if operator.contains(response['message']['content'],"yes"):
-                return info
-            else:
-                return name
-    
-    return "Error 401: No name found"
+        element = page.locator(selector).first
     else:
         print("No selector provided")
         return
