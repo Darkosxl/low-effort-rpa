@@ -96,7 +96,11 @@ def reply_whatsapp():
         
         media_sid = os.path.basename(urlparse(media_url).path)
         filename = f"{media_sid}{ext}"
-        r = requests.get(media_url)
+        
+        # Twilio media URLs require authentication
+        account_sid = os.getenv('TWILIO_ACCOUNT_SID')
+        auth_token = os.getenv('TWILIO_AUTH_TOKEN')
+        r = requests.get(media_url, auth=(account_sid, auth_token))
 
         with open(filename, 'wb') as f:
             f.write(r.content)
@@ -181,6 +185,10 @@ def reply_whatsapp():
             wp_response.message("Bir hata olustu: " + str(e))
 
         return Response(str(wp_response), mimetype="text/xml")
+
+@app.route("/health", methods=["GET"])
+def health():
+    return "200 OK"
 
 if __name__ == "__main__":
     app.run(port=3987)

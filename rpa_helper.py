@@ -26,8 +26,8 @@ async def human_option_select(page, dropdown_selector, option_text):
 async def human_button_click(page, selector=None, has_text=None ,exact_text=None, check_exists=False):
     if exact_text:
         element = page.get_by_text(exact_text, exact=False)
-    elif selector:
-        element = page.locator(selector).first
+    elif selector and has_text:
+        element = page.locator(selector).filter(has_text=has_text).first
     else:
         print("No selector provided")
         return
@@ -163,17 +163,18 @@ async def get_payment_type(page, name_surname, payment_amount, search_new_person
         await page.keyboard.press("Enter")
         await asyncio.sleep(random.uniform(1.7, 3.7))
 
-        # Dead screen check - verify the page loaded correctly
-        success_indicator = page.locator("text=TC Kimlik").first
+        # Dead screen check - verify the name appears in results
+        success_indicator = page.locator(f"a:has-text('{name_surname}')").first
         try:
             await success_indicator.wait_for(state="visible", timeout=3000)
         except:
             # First attempt failed - retry with just surname
-            print(f"Dead screen detected - retrying with surname only...")
+            print(f"Name not found - retrying with surname only...")
             await human_button_click(page, "a.btn.bg-orange", has_text="KURSİYER ARA")
             await asyncio.sleep(random.uniform(1.7, 3.7))
             
-            await human_type(page, "#txtaraadi", name_surname.split(" ")[1])
+            surname = name_surname.split(" ")[-1]  # Get last part as surname
+            await human_type(page, "#txtaraadi", surname)
             await asyncio.sleep(random.uniform(0.8, 1.8))
             await page.keyboard.press("Enter")
             await asyncio.sleep(random.uniform(1.7, 3.7))
@@ -182,7 +183,7 @@ async def get_payment_type(page, name_surname, payment_amount, search_new_person
                 await success_indicator.wait_for(state="visible", timeout=3000)
             except:
                 print(f"Both attempts failed for '{name_surname}'")
-                return ["ISIM BULUNAMADI", "FLAG: 404"]
+                return [["ISIM BULUNAMADI", "FLAG: 404"]]
 
         await human_button_click(page, "a", has_text=name_surname)
         await asyncio.sleep(random.uniform(1.7, 3.7))

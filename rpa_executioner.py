@@ -55,7 +55,12 @@ async def golden_PaymentOwed(page, collection_type, amount):
     await asyncio.sleep(random.uniform(1.6, 3.1))
 
 async def RPAexecutioner_readfile(filename, sheetname):
-    dfs = pd.read_excel(filename, sheet_name=sheetname,header=14)
+    # Try xlrd first (for .xls), fall back to openpyxl (for .xlsx)
+    try:
+        dfs = pd.read_excel(filename, sheet_name=sheetname, header=14, engine='xlrd')
+    except:
+        dfs = pd.read_excel(filename, sheet_name=sheetname, header=14, engine='openpyxl')
+    
     people = dfs["Açıklama"]
     payments = dfs["Tutar"]
     tag = dfs["Etiket"]
@@ -71,7 +76,7 @@ async def RPAexecutioner_GoldenProcessStart(filename=None, sheetname=None):
         print("Launching browser...")
         browser = await chromium.launch(headless=False)
         
-        context = await browser.new_context()
+        context = await browser.new_context(ignore_https_errors=True)
         
         page = await context.new_page()
         print("Page created. Navigating to login page...")
@@ -93,22 +98,17 @@ async def RPAexecutioner_GoldenProcessStart(filename=None, sheetname=None):
         await asyncio.sleep(random.uniform(1.5, 4.1))
 
         # Close the notification popup
-        print("Attempting to close notification popup...")
-        try:
-            await page.click("button.close", timeout=5000)
-        except:
-            print("Could not find button.close, trying text=X")
-            try:
-                await page.get_by_text("X", exact=True).click(timeout=2000)
-            except:
-                print("Could not click X either")
-        
-        await asyncio.sleep(random.uniform(1.1,2.2))
+        #print("Attempting to close notification popup...")
+        #try:
+        #    await page.click("button.close", timeout=5000)
+        #except:
+        #    print("Could not find button.close, trying text=X")
+        #    try:
+        #        await page.get_by_text("X", exact=True).click(timeout=2000)
+        #    except:
+        #        print("Could not click X either")
+        #await asyncio.sleep(random.uniform(1.1,2.2))
 
-        print("Clicking KURSİYER ARA...")
-        await human_button_click(page, "a.btn.bg-orange", has_text="KURSİYER ARA")
-        
-        await asyncio.sleep(random.uniform(1.7, 3.7))
 
         payment_information = await RPAexecutioner_readfile(filename, sheetname)
 
@@ -243,18 +243,17 @@ async def RPAexecutioner_GoldenUniqueProcess(name_surname=None, payment_type=Non
         
         await asyncio.sleep(random.uniform(1.5, 4.1))
 
-        # Close the notification popup
-        print("Attempting to close notification popup...")
-        try:
-            await page.click("button.close", timeout=5000)
-        except:
-            print("Could not find button.close, trying text=X")
-            try:
-                await page.get_by_text("X", exact=True).click(timeout=2000)
-            except:
-                print("Could not click X either")
-        
-        await asyncio.sleep(random.uniform(1.1,2.2))
+        # Notification popup code - commented out (no longer needed)
+        # print("Attempting to close notification popup...")
+        # try:
+        #     await page.click("button.close", timeout=5000)
+        # except:
+        #     print("Could not find button.close, trying text=X")
+        #     try:
+        #         await page.get_by_text("X", exact=True).click(timeout=2000)
+        #     except:
+        #         print("Could not click X either")
+        #await asyncio.sleep(random.uniform(1.1,2.2))
 
         print("Clicking KURSİYER ARA...")
         await human_button_click(page, "a.btn.bg-orange", has_text="KURSİYER ARA")
@@ -286,5 +285,6 @@ async def RPAexecutioner_GoldenUniqueProcess(name_surname=None, payment_type=Non
 
 
 
-    print(asyncio.run(RPAexecutioner_GoldenProcessStart("belgev3.xls", "hesaphareketleri")))
-
+# Uncomment below to test directly:
+# if __name__ == "__main__":
+#     print(asyncio.run(RPAexecutioner_GoldenProcessStart("belgev3.xls", "hesaphareketleri")))
