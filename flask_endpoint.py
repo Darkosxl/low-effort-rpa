@@ -8,6 +8,7 @@ from urllib.parse import urlparse
 import os
 import pandas as pd
 import rpa_executioner as rpaexec
+from rpa_helper import infer_payment_type_from_amount
 import threading
 import asyncio
 import dotenv
@@ -21,13 +22,13 @@ You are a data extraction assistant for a driving school.
 Allowed Payment Categories: [YAZILI SINAV HARCI, UYGULAMA SINAV HARCI, ÖZEL DERS, BAŞARISIZ ADAY EĞİTİMİ, BELGE ÜCRETİ, TAKSİT].
 
 Rules:
-1. Extract the full name if present.
+1. Extract the full name AND payment type from the message.
 2. Map payment descriptions to the allowed categories ONLY.
-3. Output strictly in one of these three formats:
-   3.1 name: "Name"
-   3.2 payment_type: "CATEGORY"
-   3.3 no_information: "reason"
-4. Do not output markdown or explanation.
+3. Output strictly in JSON format:
+   {"name": "Full Name or null", "payment_type": "CATEGORY or null"}
+4. If the message is useless or contains no relevant info, output:
+   {"no_information": "reason"}
+5. Do not output markdown, code blocks, or explanation. Just raw JSON.
 """
 
 def run_rpa_background(filename, user_phone):
@@ -51,7 +52,7 @@ def run_rpa_background(filename, user_phone):
         
         if account_sid and auth_token and from_number:
             client = Client(account_sid, auth_token)
-            message_body = "Onur Bey Son tarama sonuclarinizi bulabilirsiniz: \n" + str(result_table) + "\n lutfen sirayla cozulmemis olanlari belirtin."
+            message_body = "Onur Bey Son tarama sonuclarinizi bulabilirsiniz: \n" + str(result_table) + "\n hocam lutfen ilk PAID olmayan satirin adini ve odemesini belirtir misiniz?"
             
             # Split message if too long (Twilio limit is 1600 chars, but good practice)
             # For now, just send.
@@ -80,6 +81,53 @@ def run_rpa_background(filename, user_phone):
         except:
             pass
 
+
+def run_unique_process_background(name, payment_type, payment_amount, row_index, user_phone):
+    """Runs the unique RPA process in background and sends notification when done."""
+    try:
+        print(f"Starting unique process for {name} - {payment_type}")
+        asyncio.run(rpaexec.RPAexecutioner_GoldenUniqueProcess(
+            name_surname=name,
+            payment_type=payment_type,
+            payment_amount=payment_amount,
+            is_owed=True
+        ))
+        
+        # Update the Excel file
+        df = pd.read_excel("result_table.xlsx")
+        df.at[row_index, "status"] = "PAID"
+        df.at[row_index, "name"] = name
+        df.at[row_index, "payment_type"] = payment_type
+        df.to_excel("result_table.xlsx", index=False)
+        
+        # Send success notification
+        account_sid = os.getenv('TWILIO_ACCOUNT_SID')
+        auth_token = os.getenv('TWILIO_AUTH_TOKEN')
+        from_number = os.getenv('TWILIO_PHONE_NUMBER')
+        
+        if account_sid and auth_token and from_number:
+            Client(account_sid, auth_token).messages.create(
+                from_=from_number,
+                body=f"✅ {name} - {payment_type} - {payment_amount} Golden'a giris yapildi!",
+                to=user_phone
+            )
+            print("Unique process notification sent.")
+        
+    except Exception as e:
+        print(f"Unique process failed: {e}")
+        try:
+            account_sid = os.getenv('TWILIO_ACCOUNT_SID')
+            auth_token = os.getenv('TWILIO_AUTH_TOKEN')
+            from_number = os.getenv('TWILIO_PHONE_NUMBER')
+            if account_sid and auth_token and from_number:
+                Client(account_sid, auth_token).messages.create(
+                    from_=from_number,
+                    body=f"❌ Hata: {name} icin islem yapilamadi: {str(e)}",
+                    to=user_phone
+                )
+        except:
+            pass
+
 #TODO pos cihazindan gelen parayi da ayarla
 @app.route("/reply_whatsapp", methods=["POST"])
 def reply_whatsapp():
@@ -90,6 +138,8 @@ def reply_whatsapp():
     wp_response = MessagingResponse()
     #if there is an excel sheet sent
     if num_media == 1:
+        if os.path.isfile("result_table.xlsx"):
+            os.remove("result_table.xlsx")
         media_url = request.form.get("MediaUrl0")
         content_type = request.form.get(f'MediaContentType{0}')
         ext = mimetypes.guess_extension(content_type) or '.bin'
@@ -100,7 +150,20 @@ def reply_whatsapp():
         # Twilio media URLs require authentication
         account_sid = os.getenv('TWILIO_ACCOUNT_SID')
         auth_token = os.getenv('TWILIO_AUTH_TOKEN')
+        
+        if not account_sid or not auth_token:
+            print("Error: TWILIO_ACCOUNT_SID or TWILIO_AUTH_TOKEN missing in .env")
+            wp_response.message("Sunucu hatasi: Twilio kimlik bilgileri eksik.")
+            return Response(str(wp_response), mimetype="text/xml")
+        
+        print(f"Downloading media from {media_url}...")
         r = requests.get(media_url, auth=(account_sid, auth_token))
+        
+        if r.status_code != 200:
+            print(f"Error downloading media: Status {r.status_code}")
+            print(f"Response: {r.text[:200]}") # Print first 200 chars of error
+            wp_response.message("Dosya indirilemedi. Lutfen tekrar deneyin.")
+            return Response(str(wp_response), mimetype="text/xml")
 
         with open(filename, 'wb') as f:
             f.write(r.content)
@@ -114,7 +177,21 @@ def reply_whatsapp():
 
     # Answering questions
     else:
+        # After updating the status to PAID, check if all are done
+        
         try:
+            
+            if not os.path.exists("result_table.xlsx"):
+                wp_response.message("Henuz bir islem yapilmadi veya sonuc tablosu bulunamadi.")
+                return Response(str(wp_response), mimetype="text/xml")
+
+            df = pd.read_excel("result_table.xlsx")
+            
+            if (df["status"] == "PAID").all():
+                os.remove("result_table.xlsx")
+                wp_response.message("Tüm işlemler tamamlandı! Elinize sağlık Hocam! Defteri kapiyorum.")
+                return Response(str(wp_response), mimetype="text/xml")
+            
             response = requests.post(
                 url="https://openrouter.ai/api/v1/chat/completions",
                 headers={
@@ -131,54 +208,48 @@ def reply_whatsapp():
             
             llm_output = response.json()['choices'][0]['message']['content']
             
-            if not os.path.exists("result_table.xlsx"):
-                 wp_response.message("Henuz bir islem yapilmadi veya sonuc tablosu bulunamadi.")
-                 return Response(str(wp_response), mimetype="text/xml")
-
-            df = pd.read_excel("result_table.xlsx")
+            # Parse LLM JSON response
+            try:
+                llm_data = json.loads(llm_output.strip())
+            except:
+                llm_data = {}
             
-            # Note: The original logic for 'solved', 'owed', etc. relies on columns that might not exist 
-            # in the simple CSV output from RPA. 
-            # Assuming the user will handle the column mismatch or the RPA output is sufficient.
-            # I will keep the original logic structure but wrap in try-except.
-            
-            if "no_information" in llm_output:
+            if "no_information" in llm_data:
                 wp_response.message("Anlasilmadi veya islem gerektirmiyor: " + message)
+                return Response(str(wp_response), mimetype="text/xml")
+            
+            # Find first row that needs attention (not PAID)
+            for i in range(len(df)):
+                status = str(df["status"][i])
+                if status == "PAID":
+                    continue
+                    
+                # Get row data
+                name = str(df["name"][i])
+                payment_type = str(df["payment_type"][i])
+                payment_amount = df["payment_amount"][i]
                 
-            elif "name" in llm_output:
-                payment_type = "?"  
-                payment_amount = "0"
-                owed = False
-                checker = 0
-                for i in len(df["solved"]):
-                    if df["solved"][i] == "unsolved":
-                        owed = df["owed"][i]
-                        payment_type = df["payment_type"][i]
-                        payment_amount = df["payment_amount"][i]
-                        checker = i
-                        break
-                df["solved"][checker] = "solved"
-                df["name"][checker] = llm_output
-                df.to_excel("result_table.xlsx", index=False)
-                rpaexec.RPAexecutioner_GoldenUniqueProcess(name=llm_output, payment_type=payment_type, payment_amount=payment_amount, is_owed=owed)
-                wp_response.message(llm_output + " adi ogrenilen Vatandasin odemesi Golden'a giris yapildi: " + payment_type + " " + payment_amount)
-            elif "payment_type" in llm_output:
-                payment_type = "?"  
-                payment_amount = "0"
-                owed = False
-                checker = 0
-                for i in len(df["solved"]):
-                    if df["solved"][i] == "unsolved":
-                        owed = df["owed"][i]
-                        name = df["name"][i]
-                        payment_amount = df["payment_amount"][i]
-                        checker = i
-                        break
-                df["solved"][checker] = "solved"
-                df["payment_type"][checker] = llm_output
-                df.to_excel("result_table.xlsx", index=False)
-                rpaexec.RPAexecutioner_GoldenUniqueProcess(name=name, payment_type=llm_output, payment_amount=payment_amount, is_owed=owed)
-                wp_response.message(llm_output + " Vatandasin ogrenilen odemesi Golden'a giris yapildi: " + payment_type + " " + payment_amount)
+                # If name is missing (FLAG: 404 means name search failed)
+                if "BULUNAMADI" in name or "404" in status:
+                    name = llm_data.get("name") or name
+                
+                # If payment type is ambiguous (DORTBIN or FLAG: 4000)
+                if "DORTBIN" in payment_type:
+                    payment_type = llm_data.get("payment_type") or payment_type
+                else:
+                    payment_type = infer_payment_type_from_amount(payment_amount)
+
+                # Start background thread for RPA processing
+                print(name, payment_type, payment_amount, i, sender)
+                thread = threading.Thread(
+                    target=run_unique_process_background,
+                    args=(name, payment_type, payment_amount, i, sender)
+                )
+                thread.start()
+                
+                wp_response.message(f"Islem baslatildi: {name} - {payment_type}. Lutfen bekleyiniz...")
+                return Response(str(wp_response), mimetype="text/xml")
+            
 
         except Exception as e:
             print(f"Error processing text message: {e}")

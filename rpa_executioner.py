@@ -64,8 +64,9 @@ async def RPAexecutioner_readfile(filename, sheetname):
     people = dfs["Açıklama"]
     payments = dfs["Tutar"]
     tag = dfs["Etiket"]
+    date = dfs["Tarih"]
 
-    return [people, payments, tag]
+    return [people, payments, tag, date]
 
 
 async def RPAexecutioner_GoldenProcessStart(filename=None, sheetname=None):
@@ -127,67 +128,89 @@ async def RPAexecutioner_GoldenProcessStart(filename=None, sheetname=None):
             name_surname = await get_human_name(str(payment_information[0][i]))
             print(f"Human name retrieved: {name_surname}")
             if name_surname == "ERROR: 404":
-                payments_recorded_by_bot.append([name_surname, payment_information[1][i], "NA", "ERROR: 404 couldn't find name"])
+                payments_recorded_by_bot.append([name_surname, payment_information[1][i], "NA", "FLAG 404: NAME_NOT_FOUND"])
                 print("Error: name not found" + str(payment_information[0][i]) + "was not attributed to any name")
                 continue
             else:
                 print("name found: " + name_surname)
-
+            if name_surname == "PAYMENT_BY_POS":
+                payments_recorded_by_bot.append([name_surname, payment_information[1][i], "NA", "FLAG: POS"])
+                print("Payment by pos, skipping")
+                continue
             print(f"Getting payment type for {name_surname} with amount {payment_information[1][i]}")
-            payment_type = await get_payment_type(page, name_surname,payment_information[1][i], search_new_person)
+
+            payment_type = await get_payment_type(page, name_surname,payment_information[1][i], payment_information[3][i], search_new_person)
             print(f"Payment type result: {payment_type}")
             
             # Sort so TAKSİT is always last
             payment_type.sort(key=lambda x: 1 if x[0] == "TAKSİT" else 0)
             
             total_paid = payment_information[1][i]
-            
+            payment_entered = 0
             for info in payment_type:
                 print(f"Processing info: {info}")
                 if info[1] == "FLAG: 404":
-                    payments_recorded_by_bot.append([name_surname, payment_information[1][i], info[0], "FLAG: 404"])
+                    payment_entered = total_paid
+                    payments_recorded_by_bot.append([name_surname, payment_entered, info[0], "FLAG: 404"])
                     print("Name not found, skipping")
                 if info[1] == "FLAG: 4000":
-                    payments_recorded_by_bot.append([name_surname, payment_information[1][i], info[0], "FLAG: 4000"])
+                    payment_entered = 4000
+                    payments_recorded_by_bot.append([name_surname, payment_entered, info[0], "FLAG: 4000"])
                     print("Payment amount is 4000, skipping")
+                    
                 if info[1] == "BORC VAR":
+                    
                     if info[0] == "UYGULAMA SINAV HARCI":
                         print(f"Initiating payment: {name_surname}, {info[0]}, {1600}")
                         await golden_PaymentPaid(page, info[0], 1600)
                         print("Payment completed.")
                         await asyncio.sleep(random.uniform(2.1, 3.1))
-                        total_paid -= 1600
+                        if (total_paid-1600)%500 == 0:
+                            payment_entered = 1600
+                            total_paid -= 1600
+                        else:
+                            payment_entered = 1350
+                            total_paid -= 1350
                     if info[0] == "YAZILI SINAV HARCI":
                         print(f"Initiating payment: {name_surname}, {info[0]}, {1200}")
                         await golden_PaymentPaid(page, info[0], 1200)
                         print("Payment completed.")
                         await asyncio.sleep(random.uniform(2.1, 3.1))
-                        total_paid -= 1200
+                        if (total_paid-1200)%500 == 0:
+                            payment_entered = 1200
+                            total_paid -= 1200
+                        else:
+                            payment_entered = 900
+                            total_paid -= 900
                     if info[0] == "BELGE ÜCRETİ":
                         print(f"Initiating payment: {name_surname}, {info[0]}, {1000}")
                         await golden_PaymentPaid(page, info[0], 1000)
                         print("Payment completed.")
                         await asyncio.sleep(random.uniform(2.1, 3.1))
                         total_paid -= 1000
+                        payment_entered = 1000
                     if info[0] == "ÖZEL DERS":
                         print(f"Initiating payment: {name_surname}, {info[0]}, {4000}")
                         await golden_PaymentPaid(page, info[0], 4000)
                         print("Payment completed.")
                         await asyncio.sleep(random.uniform(2.1, 3.1))
                         total_paid -= 4000
+                        payment_entered = 1000
                     if info[0] == "BAŞARISIZ ADAY EĞİTİMİ":
                         print(f"Initiating payment: {name_surname}, {info[0]}, {4000}")
                         await golden_PaymentPaid(page, info[0], 4000)
                         print("Payment completed.")
                         await asyncio.sleep(random.uniform(2.1, 3.1))
                         total_paid -= 4000
+                        payment_entered = 4000
                     if info[0] == "TAKSİT":
                         print(f"Initiating payment: {name_surname}, {info[0]}, {total_paid}")
                         await golden_PaymentPaid(page, info[0], total_paid)
                         print("Payment completed.")
                         await asyncio.sleep(random.uniform(2.1, 3.1))
+                        payment_entered = total_paid
                         total_paid -= total_paid
-                    payments_recorded_by_bot.append([name_surname, payment_information[1][i], info[0], "PAID"])
+                    payments_recorded_by_bot.append([name_surname, payment_entered, info[0], "PAID"])
                     print("round done")
                 #elif info[1] == "BORC YOK":
                 #    golden_PaymentOwed(page, info[0], payment_information[1][i])
