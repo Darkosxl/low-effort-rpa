@@ -63,16 +63,51 @@ async def RPAexecutioner_readfile(filename, sheetname):
         dfs = pd.read_excel(filename, sheet_name=sheetname, header=14, engine='xlrd')
     except:
         dfs = pd.read_excel(filename, sheet_name=sheetname, header=14, engine='openpyxl')
-    
+
     people = dfs["Açıklama"]
     payments = dfs["Tutar"]
     tag = dfs["Etiket"]
     date = dfs["Tarih"]
+    bakiye = dfs["Bakiye"] if "Bakiye" in dfs.columns else None
 
-    return [people, payments, tag, date]
+    return [people, payments, tag, date, bakiye]
 
 
-async def RPAexecutioner_GoldenProcessStart(filename=None, sheetname=None):
+def find_starting_row_from_bakiye(bakiye_column, son_kasa_miktari):
+    """
+    Find the starting row by searching from bottom to top for a matching Bakiye value.
+    Only compares the integer part (digits to the left of the decimal point).
+    Returns the index of the matching row, or 0 if no match is found.
+    """
+    if bakiye_column is None or son_kasa_miktari is None or son_kasa_miktari == "":
+        return 0
+
+    try:
+        # Parse the target value - only take integer part
+        target = int(float(str(son_kasa_miktari).replace(',', '.').replace(' ', '')))
+    except (ValueError, TypeError):
+        print(f"Could not parse son_kasa_miktari: {son_kasa_miktari}")
+        return 0
+
+    # Search from bottom to top
+    for i in range(len(bakiye_column) - 1, -1, -1):
+        try:
+            bakiye_val = bakiye_column.iloc[i]
+            if pd.isna(bakiye_val):
+                continue
+            # Get integer part of the bakiye value
+            bakiye_int = int(float(str(bakiye_val).replace(',', '.').replace(' ', '')))
+            if bakiye_int == target:
+                print(f"Found matching Bakiye at row {i}: {bakiye_val} (int: {bakiye_int}) == {target}")
+                return i
+        except (ValueError, TypeError):
+            continue
+
+    print(f"No matching Bakiye found for {son_kasa_miktari}, starting from row 0")
+    return 0
+
+
+async def RPAexecutioner_GoldenProcessStart(filename=None, sheetname=None, son_kasa_miktari=None):
     async with Stealth().use_async(async_playwright()) as playwright:
         chromium = playwright.chromium
         
@@ -101,24 +136,44 @@ async def RPAexecutioner_GoldenProcessStart(filename=None, sheetname=None):
         await asyncio.sleep(random.uniform(1.5, 4.1))
 
         # Close the notification popup
-        #print("Attempting to close notification popup...")
-        #try:
-        #    await page.click("button.close", timeout=5000)
-        #except:
-        #    print("Could not find button.close, trying text=X")
-        #    try:
-        #        await page.get_by_text("X", exact=True).click(timeout=2000)
-        #    except:
-        #        print("Could not click X either")
-        #await asyncio.sleep(random.uniform(1.1,2.2))
+        print("Attempting to close notification popup...")
+        try:
+            await page.click("button.close", timeout=5000)
+        except:
+            print("Could not find button.close, trying text=X")
+            try:
+                await page.get_by_text("X", exact=True).click(timeout=2000)
+            except:
+                print("Could not click X either")
+        await asyncio.sleep(random.uniform(1.1,2.2))
 
 
         payment_information = await RPAexecutioner_readfile(filename, sheetname)
 
+        # Find starting row based on son_kasa_miktari if provided
+        bakiye_column = payment_information[4]  # Bakiye is the 5th element
+
         prev_human_name = ""
         search_new_person = True
         current_cache = None
-        for i in range(len(payment_information[0])):
+
+        if son_kasa_miktari:
+            matched_row = find_starting_row_from_bakiye(bakiye_column, son_kasa_miktari)
+            start_row = matched_row - 1
+            if start_row < 0:
+                print("İşlem zaten tamamlanmış - başlangıç satırı 0'ın altında.")
+                await browser.close()
+                if os.path.exists("payments_recorded_by_bot.csv"):
+                    return pd.read_csv("payments_recorded_by_bot.csv")
+                return pd.DataFrame(columns=["name", "payment_amount", "payment_type", "status"])
+            print(f"Starting from row {start_row}, going backwards to 0 (Bakiye match at row {matched_row} for {son_kasa_miktari})")
+            row_iterator = range(start_row, -1, -1)  # Go backwards from start_row to 0
+        else:
+            # No son_kasa_miktari provided, use original behavior (forward from 0)
+            print(f"No Bakiye filter, processing from row 0 to {len(payment_information[0])-1}")
+            row_iterator = range(len(payment_information[0]))  # Go forward from 0 to end
+
+        for i in row_iterator:
             
             if "-" in str(payment_information[1][i]):
                 print(str(payment_information[1][i]) +" Cost, not a received payment")

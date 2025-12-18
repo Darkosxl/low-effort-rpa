@@ -4,7 +4,7 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>Payment Whiteboard</title>
+    <title>Ödeme Tahtası</title>
     <style>
         body {
             background: white;
@@ -44,27 +44,124 @@
         .dropzone-icon { font-size: 48px; }
         .dropzone-text { color: #666; margin-top: 10px; }
         .dropzone-filename { margin-top: 10px; font-weight: bold; color: #2196F3; }
+
+        /* Start button */
+        .start-btn {
+            display: block;
+            width: 100%;
+            padding: 15px;
+            margin-bottom: 20px;
+            font-size: 18px;
+            font-weight: bold;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .start-btn.ready {
+            background: #4CAF50;
+            color: white;
+        }
+        .start-btn.ready:hover {
+            background: #388E3C;
+        }
+        .start-btn.disabled {
+            background: #ccc;
+            color: #666;
+            cursor: not-allowed;
+        }
+        .start-btn.running {
+            background: #FF9800;
+            color: white;
+            cursor: wait;
+        }
+        .status-msg {
+            text-align: center;
+            padding: 10px;
+            margin-bottom: 15px;
+            border-radius: 5px;
+            display: none;
+        }
+        .status-msg.error { display: block; background: #ffcdd2; color: #c62828; }
+        .status-msg.success { display: block; background: #c8e6c9; color: #2e7d32; }
+
+        /* Start controls container */
+        .start-controls {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 20px;
+            align-items: stretch;
+        }
+        .kasa-input-container {
+            display: flex;
+            flex-direction: column;
+            min-width: 200px;
+        }
+        .kasa-input-container label {
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 4px;
+        }
+        .kasa-input-container input {
+            padding: 12px;
+            font-size: 16px;
+            border: 2px solid #ccc;
+            border-radius: 8px;
+            font-family: monospace;
+        }
+        .kasa-input-container input:focus {
+            outline: none;
+            border-color: #4CAF50;
+        }
+        .stop-btn {
+            padding: 15px 30px;
+            font-size: 18px;
+            font-weight: bold;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            background: #f44336;
+            color: white;
+            transition: all 0.2s;
+        }
+        .stop-btn:hover {
+            background: #d32f2f;
+        }
+        .stop-btn.hidden {
+            display: none;
+        }
     </style>
 </head>
 <body>
-    <h2>Payment Whiteboard</h2>
+    <h2>Ödeme Tahtası</h2>
 
     <!-- Drag & Drop Zone -->
     <div class="dropzone" id="dropzone">
         <div class="dropzone-icon">📁</div>
-        <div class="dropzone-text">Drag & drop Excel file here (.xls, .xlsx)<br>or click to browse</div>
+        <div class="dropzone-text">Excel dosyasını buraya sürükleyip bırakın (.xls, .xlsx)<br>veya tıklayarak seçin</div>
         <div class="dropzone-filename" id="filename"></div>
         <input type="file" id="fileInput" accept=".xls,.xlsx" style="display:none">
     </div>
 
+    <!-- Start Controls -->
+    <div class="start-controls">
+        <div class="kasa-input-container">
+            <label for="sonKasaInput">Son Kasa Miktari (TL)</label>
+            <input type="text" id="sonKasaInput" placeholder="örn: 125000">
+        </div>
+        <button id="startBtn" class="start-btn disabled" disabled>Önce dosya yükleyin</button>
+        <button id="stopBtn" class="stop-btn hidden">RPA'yı Durdur</button>
+    </div>
+    <div id="statusMsg" class="status-msg"></div>
+
     <table>
         <thead>
             <tr>
-                <th>Name</th>
-                <th>Amount</th>
-                <th>Type</th>
-                <th>Status</th>
-                <th>Live</th>
+                <th>Ad</th>
+                <th>Tutar</th>
+                <th>Tür</th>
+                <th>Durum</th>
+                <th>Canlı</th>
             </tr>
         </thead>
         <tbody id="payments"></tbody>
@@ -104,7 +201,7 @@
                     </tr>`;
                 }
 
-                tbody.innerHTML = html || '<tr><td colspan="5">No payments yet...</td></tr>';
+                tbody.innerHTML = html || '<tr><td colspan="5">Henüz ödeme yok...</td></tr>';
             } catch (e) {
                 console.error('Refresh error:', e);
             }
@@ -113,6 +210,98 @@
         // Refresh every second
         setInterval(refresh, 1000);
         refresh();
+
+        // Start button handling
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const statusMsg = document.getElementById('statusMsg');
+        let fileReady = false;
+        let rpaRunning = false;
+
+        startBtn.addEventListener('click', async () => {
+            if (!fileReady || rpaRunning) return;
+
+            const sonKasaInput = document.getElementById('sonKasaInput');
+            const sonKasaMiktari = sonKasaInput.value.trim();
+
+            rpaRunning = true;
+            startBtn.className = 'start-btn running';
+            startBtn.textContent = 'RPA Çalışıyor...';
+            statusMsg.className = 'status-msg';
+            statusMsg.textContent = '';
+
+            try {
+                const res = await fetch('/start', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ son_kasa_miktari: sonKasaMiktari })
+                });
+                const data = await res.json();
+
+                if (data.success) {
+                    statusMsg.className = 'status-msg success';
+                    statusMsg.textContent = data.message;
+                } else {
+                    statusMsg.className = 'status-msg error';
+                    statusMsg.textContent = data.error || 'Başlatma başarısız';
+                    rpaRunning = false;
+                    updateButtonState();
+                }
+            } catch (err) {
+                statusMsg.className = 'status-msg error';
+                statusMsg.textContent = 'Hata: ' + err.message;
+                rpaRunning = false;
+                updateButtonState();
+            }
+        });
+
+        function updateButtonState() {
+            if (rpaRunning) {
+                startBtn.className = 'start-btn running';
+                startBtn.textContent = 'RPA Çalışıyor...';
+                startBtn.disabled = true;
+                stopBtn.classList.remove('hidden');
+            } else if (fileReady) {
+                startBtn.className = 'start-btn ready';
+                startBtn.textContent = 'RPA İşlemini Başlat';
+                startBtn.disabled = false;
+                stopBtn.classList.add('hidden');
+            } else {
+                startBtn.className = 'start-btn disabled';
+                startBtn.textContent = 'Önce dosya yükleyin';
+                startBtn.disabled = true;
+                stopBtn.classList.add('hidden');
+            }
+        }
+
+        // Stop button handling
+        stopBtn.addEventListener('click', async () => {
+            if (!rpaRunning) return;
+
+            stopBtn.disabled = true;
+            stopBtn.textContent = 'Durduruluyor...';
+
+            try {
+                const res = await fetch('/stop', { method: 'POST' });
+                const data = await res.json();
+
+                if (data.success) {
+                    statusMsg.className = 'status-msg success';
+                    statusMsg.textContent = data.message;
+                    rpaRunning = false;
+                    updateButtonState();
+                } else {
+                    statusMsg.className = 'status-msg error';
+                    statusMsg.textContent = data.error || 'Durdurma başarısız';
+                }
+            } catch (err) {
+                statusMsg.className = 'status-msg error';
+                statusMsg.textContent = 'Hata: ' + err.message;
+            }
+
+            stopBtn.disabled = false;
+            stopBtn.textContent = 'RPA\'yı Durdur';
+        });
 
         // Drag & Drop handling
         const dropzone = document.getElementById('dropzone');
@@ -143,11 +332,11 @@
 
         async function uploadFile(file) {
             if (!file.name.match(/\.xlsx?$/i)) {
-                alert('Only .xls and .xlsx files allowed');
+                alert('Sadece .xls ve .xlsx dosyaları kabul edilir');
                 return;
             }
 
-            filenameDiv.textContent = 'Uploading: ' + file.name;
+            filenameDiv.textContent = 'Yükleniyor: ' + file.name;
             dropzone.classList.add('has-file');
 
             const formData = new FormData();
@@ -158,14 +347,21 @@
                 const data = await res.json();
 
                 if (data.success) {
-                    filenameDiv.textContent = 'Uploaded: ' + file.name;
+                    filenameDiv.textContent = 'Yüklendi: ' + file.name;
+                    fileReady = true;
+                    rpaRunning = false;
+                    updateButtonState();
                 } else {
-                    filenameDiv.textContent = 'Error: ' + (data.error || 'Upload failed');
+                    filenameDiv.textContent = 'Hata: ' + (data.error || 'Yükleme başarısız');
                     dropzone.classList.remove('has-file');
+                    fileReady = false;
+                    updateButtonState();
                 }
             } catch (err) {
-                filenameDiv.textContent = 'Error: ' + err.message;
+                filenameDiv.textContent = 'Hata: ' + err.message;
                 dropzone.classList.remove('has-file');
+                fileReady = false;
+                updateButtonState();
             }
         }
     </script>

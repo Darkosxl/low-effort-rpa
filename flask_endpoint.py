@@ -13,6 +13,7 @@ import pandas as pd
 import rpa_executioner as rpaexec
 from rpa_helper import infer_payment_type_from_amount
 import threading
+import multiprocessing
 import asyncio
 import dotenv
 import sys
@@ -313,9 +314,16 @@ def status():
 def whiteboard():
     return send_file(get_resource_path("whiteboard.html"))
 
+# Track currently uploaded file for /start endpoint
+current_uploaded_file = None
+# Track running RPA process for /stop endpoint
+current_rpa_process = None
+
 @app.route("/upload", methods=["POST"])
 def upload_excel():
     """Handle Excel file upload from drag & drop"""
+    global current_uploaded_file
+
     if 'file' not in request.files:
         return jsonify({"error": "No file provided"}), 400
 
@@ -335,8 +343,73 @@ def upload_excel():
     # Save the uploaded file
     filename = file.filename
     file.save(filename)
+    current_uploaded_file = filename
 
     return jsonify({"success": True, "filename": filename})
+
+
+def run_rpa_ui_process(filename, son_kasa_miktari=None):
+    """Runs the RPA process (UI mode - no WhatsApp). Used by multiprocessing."""
+    try:
+        print(f"[UI] Starting RPA for {filename}, son_kasa_miktari={son_kasa_miktari}")
+        asyncio.run(rpaexec.RPAexecutioner_GoldenProcessStart(filename, sheetname="hesaphareketleri", son_kasa_miktari=son_kasa_miktari))
+        print("[UI] RPA process completed")
+    except Exception as e:
+        print(f"[UI] RPA failed: {e}")
+
+
+@app.route("/start", methods=["POST"])
+def start_rpa():
+    """Start RPA processing for the uploaded Excel file"""
+    global current_uploaded_file, current_rpa_process
+
+    # Get son_kasa_miktari from request body
+    son_kasa_miktari = None
+    if request.is_json:
+        data = request.get_json()
+        son_kasa_miktari = data.get('son_kasa_miktari') if data else None
+
+    # Check if file was uploaded
+    if not current_uploaded_file or not os.path.isfile(current_uploaded_file):
+        # Try to find any .xls/.xlsx file in current directory
+        files = [f for f in os.listdir('.') if f.endswith(('.xls', '.xlsx')) and not f.startswith('result')]
+        if files:
+            current_uploaded_file = files[0]
+        else:
+            return jsonify({"error": "No Excel file uploaded. Please upload a file first."}), 400
+
+    # Check if RPA is already running
+    if current_rpa_process and current_rpa_process.is_alive():
+        return jsonify({"error": "RPA is already running. Stop it first."}), 400
+
+    # Start background RPA using multiprocessing (so it can be terminated)
+    current_rpa_process = multiprocessing.Process(target=run_rpa_ui_process, args=(current_uploaded_file, son_kasa_miktari))
+    current_rpa_process.start()
+
+    return jsonify({"success": True, "message": f"RPA started for {current_uploaded_file}" + (f" (starting from Bakiye: {son_kasa_miktari})" if son_kasa_miktari else "")})
+
+
+@app.route("/stop", methods=["POST"])
+def stop_rpa():
+    """Stop the running RPA process"""
+    global current_rpa_process
+
+    if not current_rpa_process or not current_rpa_process.is_alive():
+        return jsonify({"error": "No RPA process is currently running."}), 400
+
+    try:
+        current_rpa_process.terminate()
+        current_rpa_process.join(timeout=5)  # Wait up to 5 seconds for process to end
+
+        if current_rpa_process.is_alive():
+            # Force kill if it didn't terminate gracefully
+            current_rpa_process.kill()
+            current_rpa_process.join(timeout=2)
+
+        current_rpa_process = None
+        return jsonify({"success": True, "message": "RPA process terminated."})
+    except Exception as e:
+        return jsonify({"error": f"Failed to stop RPA: {str(e)}"}), 500
 
 if __name__ == "__main__":
     import webbrowser
