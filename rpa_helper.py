@@ -20,14 +20,15 @@ from icu import Locale,UnicodeString
 
 
 SYSTEM_PROMPT = """You are an expert entity extraction system specialized in identifying Turkish human names in payment descriptions.
-Your goal is to extract ALL full human names found in the text that are DIFFERENT from the 'Sender Name'.
+Your goal is to extract ALL human names found in the text that are DIFFERENT from the 'Sender Name'.
 
 Rules:
 1. Input will be: "Description: [text] | Sender: [name]"
-2. Extract full names (First + Last Name). Ignore single names unless context clearly implies a person.
-3. Ignore company names, bank terms (KURS, ODEME, HESAP, YAPI, KREDI), and the Sender's name.
-4. Output MUST be a strictly valid JSON list of strings. Example: ["Ali Yilmaz", "Ayse Demir"]
-5. If no valid names are found, output empty list: []
+2. Extract names - can be full names (First + Last) OR single names (just first name like "Ebra", "Mehmet", "Ayse").
+3. Single names are VALID and should be extracted - people often write just their first name.
+4. Ignore company names, bank terms (KURS, ODEME, HESAP, YAPI, KREDI, HARCI, UCRETI, EHLIYET, SINAV), and the Sender's name.
+5. Output MUST be a strictly valid JSON list of strings. Example: ["Ali Yilmaz", "Ebra", "Mehmet"]
+6. If no valid names are found, output empty list: []
 """
 def clear_processing_status():
     if os.path.exists("current_status.json"):
@@ -128,6 +129,23 @@ def check_date_if_paid(date_of_payment, payments_paid):
     
 def check_owed(keyword, payment_owed):
     return any(keyword in row for row in payment_owed)
+
+def check_owed_with_amount(keyword, payment_owed, expected_amount):
+    """Check if keyword exists in payment_owed AND the TUTAR matches expected_amount."""
+    for row in payment_owed:
+        if keyword in row:
+            # Extract amount from row - Turkish format like "1.600,00" at the end
+            # Find all number patterns that look like amounts
+            import re
+            amounts = re.findall(r'[\d.]+,\d{2}', row)
+            if amounts:
+                # Take the last amount (TUTAR is usually at the end)
+                tutar_str = amounts[-1]
+                # Convert Turkish format: "1.600,00" -> 1600
+                tutar = int(float(tutar_str.replace('.', '').replace(',', '.')))
+                if tutar == expected_amount:
+                    return True
+    return False
 
 def check_paid(keyword, payments_paid):
     return any(keyword in row for row in payments_paid)
@@ -585,27 +603,27 @@ async def get_payment_type(page, name_surname, payment_amount, date_of_payment, 
     
 
     if payment_amount == 1200 or payment_amount == 900:
-        # Check PAID first - if already paid, skip
-        if check_paid("YZL. SNV. HARCI", payments_paid) or check_paid("YAZILI SINAV HARCI", payments_paid):
-            print("Logic: 1200 -> YAZILI SINAV HARCI (BORC ODENMIS)")
-            payment_types.append(["YAZILI SINAV HARCI", "BORC ODENMIS"])
-            return payment_types, cached_data
-        elif check_owed("YZL. SNV. HARCI", payment_owed) or check_owed("YAZILI SINAV HARCI", payment_owed):
-            print("Logic: 1200 -> YAZILI SINAV HARCI (BORC VAR)")
+        # Check OWED first with exact amount match - person may have retaken exam after failing
+        if check_owed_with_amount("YZL. SNV. HARCI", payment_owed, payment_amount) or check_owed_with_amount("YAZILI SINAV HARCI", payment_owed, payment_amount):
+            print(f"Logic: {payment_amount} -> YAZILI SINAV HARCI (BORC VAR - amount matches)")
             payment_types.append(["YAZILI SINAV HARCI", "BORC VAR"])
+            return payment_types, cached_data
+        elif check_paid("YZL. SNV. HARCI", payments_paid) or check_paid("YAZILI SINAV HARCI", payments_paid):
+            print(f"Logic: {payment_amount} -> YAZILI SINAV HARCI (BORC ODENMIS)")
+            payment_types.append(["YAZILI SINAV HARCI", "BORC ODENMIS"])
             return payment_types, cached_data
         else:
             payment_types.append(["YAZILI SINAV HARCI", "BORC YOK"])
             return payment_types, cached_data
     if payment_amount == 1600 or payment_amount == 1350:
-        # Check PAID first - if already paid, skip
-        if check_paid("UYG. SNV. HARCI", payments_paid) or check_paid("UYGULAMA SINAV HARCI", payments_paid):
-            print("Logic: 1600 -> UYGULAMA SINAV HARCI (BORC ODENMIS)")
-            payment_types.append(["UYGULAMA SINAV HARCI", "BORC ODENMIS"])
-            return payment_types, cached_data
-        elif check_owed("UYG. SNV. HARCI", payment_owed) or check_owed("UYGULAMA SINAV HARCI", payment_owed):
-            print("Logic: 1600 -> UYGULAMA SINAV HARCI (BORC VAR)")
+        # Check OWED first with exact amount match - person may have retaken exam after failing
+        if check_owed_with_amount("UYG. SNV. HARCI", payment_owed, payment_amount) or check_owed_with_amount("UYGULAMA SINAV HARCI", payment_owed, payment_amount):
+            print(f"Logic: {payment_amount} -> UYGULAMA SINAV HARCI (BORC VAR - amount matches)")
             payment_types.append(["UYGULAMA SINAV HARCI", "BORC VAR"])
+            return payment_types, cached_data
+        elif check_paid("UYG. SNV. HARCI", payments_paid) or check_paid("UYGULAMA SINAV HARCI", payments_paid):
+            print(f"Logic: {payment_amount} -> UYGULAMA SINAV HARCI (BORC ODENMIS)")
+            payment_types.append(["UYGULAMA SINAV HARCI", "BORC ODENMIS"])
             return payment_types, cached_data
         else:
             payment_types.append(["UYGULAMA SINAV HARCI", "BORC YOK"])

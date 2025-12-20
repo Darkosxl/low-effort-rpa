@@ -230,6 +230,18 @@ async def RPAexecutioner_GoldenProcessStart(filename=None, sheetname=None, son_k
                         save_payment_record([name_surname, payment_entered, info[0], "FLAG: 4000"])
                         print("Payment amount is 4000, skipping")
 
+                    if info[1] == "BORC YOK":
+                        payment_entered = total_paid
+                        update_processing_status(name_surname, "completed", info[0], payment_entered)
+                        save_payment_record([name_surname, payment_entered, info[0], "BORC YOK"])
+                        print(f"No debt found for {info[0]}, skipping")
+
+                    if info[1] == "BORC ODENMIS":
+                        payment_entered = total_paid
+                        update_processing_status(name_surname, "completed", info[0], payment_entered)
+                        save_payment_record([name_surname, payment_entered, info[0], "BORC ODENMIS"])
+                        print(f"Already paid for {info[0]}, skipping")
+
                     if info[1] == "BORC VAR":
 
                         if info[0] == "UYGULAMA SINAV HARCI":
