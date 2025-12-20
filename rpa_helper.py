@@ -155,32 +155,43 @@ async def human_option_select(page, dropdown_selector, option_text):
     dropDownList = page.locator(dropdown_selector)
     await dropDownList.select_option(option_text)
     
-async def human_button_click(page, selector=None, has_text=None ,exact_text=None, check_exists=False):
-    if exact_text:
-        element = page.get_by_text(exact_text, exact=False)
-    elif selector and has_text:
-        has_text_tr = turkish_pattern_check(has_text)
-        element = page.locator(selector).filter(has_text=has_text_tr).first
-    elif selector:
-        element = page.locator(selector).first
-    else:
-        print("No selector provided")
-        return
-    
-    if check_exists:
-        try:
-            # Wait up to 3000ms (3 seconds) for the element to appear
-            await element.wait_for(state="visible", timeout=3000)
-        except:
-            # If it times out, print message and STOP function here
-            print(f"The name '{exact_text or selector}' is not there.")
-            return
-            
-    await element.hover()
-    
-    await asyncio.sleep(random.uniform(0.3, 0.7))
-    
-    await element.click()
+async def human_button_click(page, selector=None, has_text=None ,exact_text=None, check_exists=False, timeout=5000):
+    """
+    Click an element with human-like behavior.
+    Returns True on success, False on failure (instead of crashing).
+    timeout: max wait time in ms (default 5000ms instead of 30000ms)
+    """
+    try:
+        if exact_text:
+            element = page.get_by_text(exact_text, exact=False)
+        elif selector and has_text:
+            has_text_tr = turkish_pattern_check(has_text)
+            element = page.locator(selector).filter(has_text=has_text_tr).first
+        elif selector:
+            element = page.locator(selector).first
+        else:
+            print("No selector provided")
+            return False
+
+        if check_exists:
+            try:
+                # Wait up to 3000ms (3 seconds) for the element to appear
+                await element.wait_for(state="visible", timeout=3000)
+            except:
+                # If it times out, print message and STOP function here
+                print(f"The name '{exact_text or selector}' is not there.")
+                return False
+
+        # Use shorter timeout for hover/click to fail fast
+        await element.hover(timeout=timeout)
+
+        await asyncio.sleep(random.uniform(0.3, 0.7))
+
+        await element.click(timeout=timeout)
+        return True
+    except Exception as e:
+        print(f"human_button_click failed for '{has_text or exact_text or selector}': {e}")
+        return False
 
 async def human_type(page, selector, text):
     element = page.locator(selector).first
@@ -452,10 +463,23 @@ async def get_payment_type(page, name_surname, payment_amount, date_of_payment, 
         payment_owed, payments_paid, payments_taksit_paid, payments_taksit_owed = cached_data
     else:
         # Click on the person's name to go to payment page
-        await human_button_click(page, "a", has_text=name_surname)
+        name_click_success = await human_button_click(page, "a", has_text=name_surname)
+        if not name_click_success:
+            # Try with surname only as fallback
+            surname = name_surname.split(" ")[-1]
+            name_click_success = await human_button_click(page, "a", has_text=surname)
+            if not name_click_success:
+                print(f"Failed to click on name '{name_surname}' - skipping to next person")
+                inferred_type = infer_payment_type_from_amount(payment_amount)
+                return [[inferred_type, "FLAG: 404"]], None
+
         await asyncio.sleep(random.uniform(1.7, 3.7))
-            
-        await human_button_click(page, "a:visible", has_text="ÖDEME")
+
+        odeme_click_success = await human_button_click(page, "a:visible", has_text="ÖDEME")
+        if not odeme_click_success:
+            print(f"Failed to click ÖDEME button for '{name_surname}' - skipping")
+            inferred_type = infer_payment_type_from_amount(payment_amount)
+            return [[inferred_type, "FLAG: 404"]], None
         print("in the ODEME page")
 
         tables = page.locator("table.table.table-bordered.dataTable")

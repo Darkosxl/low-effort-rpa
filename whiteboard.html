@@ -150,7 +150,7 @@
             <input type="text" id="sonKasaInput" placeholder="örn: 125000">
         </div>
         <button id="startBtn" class="start-btn disabled" disabled>Önce dosya yükleyin</button>
-        <button id="stopBtn" class="stop-btn hidden">RPA'yı Durdur</button>
+        <button id="stopBtn" class="stop-btn">RPA'yı Durdur</button>
     </div>
     <div id="statusMsg" class="status-msg"></div>
 
@@ -260,17 +260,14 @@
                 startBtn.className = 'start-btn running';
                 startBtn.textContent = 'RPA Çalışıyor...';
                 startBtn.disabled = true;
-                stopBtn.classList.remove('hidden');
             } else if (fileReady) {
                 startBtn.className = 'start-btn ready';
                 startBtn.textContent = 'RPA İşlemini Başlat';
                 startBtn.disabled = false;
-                stopBtn.classList.add('hidden');
             } else {
                 startBtn.className = 'start-btn disabled';
                 startBtn.textContent = 'Önce dosya yükleyin';
                 startBtn.disabled = true;
-                stopBtn.classList.add('hidden');
             }
         }
 

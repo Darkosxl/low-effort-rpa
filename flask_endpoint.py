@@ -9,18 +9,28 @@ import json
 import mimetypes
 from urllib.parse import urlparse
 import os
+import signal
 import pandas as pd
 import rpa_executioner as rpaexec
-from rpa_helper import infer_payment_type_from_amount
+from rpa_helper import infer_payment_type_from_amount, clear_processing_status
 import threading
 import multiprocessing
 import asyncio
 import dotenv
 import sys
+import logging
 
 dotenv.load_dotenv()
 
 app = Flask(__name__)
+
+# Disable logging for /status endpoint to reduce spam
+class StatusFilter(logging.Filter):
+    def filter(self, record):
+        return '/status' not in record.getMessage()
+
+log = logging.getLogger('werkzeug')
+log.addFilter(StatusFilter())
 
 SYSTEM_PROMPT = """
 You are a data extraction assistant for a driving school.
@@ -378,9 +388,16 @@ def start_rpa():
         else:
             return jsonify({"error": "No Excel file uploaded. Please upload a file first."}), 400
 
+    # Clean up dead process reference if exists
+    if current_rpa_process and not current_rpa_process.is_alive():
+        current_rpa_process = None
+
     # Check if RPA is already running
     if current_rpa_process and current_rpa_process.is_alive():
         return jsonify({"error": "RPA is already running. Stop it first."}), 400
+
+    # Clear old status before starting
+    clear_processing_status()
 
     # Start background RPA using multiprocessing (so it can be terminated)
     current_rpa_process = multiprocessing.Process(target=run_rpa_ui_process, args=(current_uploaded_file, son_kasa_miktari))
@@ -391,25 +408,29 @@ def start_rpa():
 
 @app.route("/stop", methods=["POST"])
 def stop_rpa():
-    """Stop the running RPA process"""
+    """Stop the running RPA process - kills browser children, process fails naturally"""
     global current_rpa_process
 
-    if not current_rpa_process or not current_rpa_process.is_alive():
-        return jsonify({"error": "No RPA process is currently running."}), 400
+    if not current_rpa_process:
+        current_rpa_process = None
+        clear_processing_status()
+        return jsonify({"success": True, "message": "State reset."})
 
     try:
-        current_rpa_process.terminate()
-        current_rpa_process.join(timeout=5)  # Wait up to 5 seconds for process to end
+        # Kill browser child processes - RPA will fail on its own
+        pid = current_rpa_process.pid
+        os.system(f"pkill -P {pid} 2>/dev/null")
 
-        if current_rpa_process.is_alive():
-            # Force kill if it didn't terminate gracefully
-            current_rpa_process.kill()
-            current_rpa_process.join(timeout=2)
+        # Give it a moment to fail
+        current_rpa_process.join(timeout=3)
 
         current_rpa_process = None
-        return jsonify({"success": True, "message": "RPA process terminated."})
+        clear_processing_status()
+        return jsonify({"success": True, "message": "RPA stopped."})
     except Exception as e:
-        return jsonify({"error": f"Failed to stop RPA: {str(e)}"}), 500
+        current_rpa_process = None
+        clear_processing_status()
+        return jsonify({"success": True, "message": "State reset."})
 
 if __name__ == "__main__":
     import webbrowser

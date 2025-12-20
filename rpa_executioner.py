@@ -159,7 +159,7 @@ async def RPAexecutioner_GoldenProcessStart(filename=None, sheetname=None, son_k
 
         if son_kasa_miktari:
             matched_row = find_starting_row_from_bakiye(bakiye_column, son_kasa_miktari)
-            start_row = matched_row - 1
+            start_row = matched_row
             if start_row < 0:
                 print("İşlem zaten tamamlanmış - başlangıç satırı 0'ın altında.")
                 await browser.close()
@@ -174,7 +174,7 @@ async def RPAexecutioner_GoldenProcessStart(filename=None, sheetname=None, son_k
             row_iterator = range(len(payment_information[0]))  # Go forward from 0 to end
 
         for i in row_iterator:
-            
+
             if "-" in str(payment_information[1][i]):
                 print(str(payment_information[1][i]) +" Cost, not a received payment")
                 continue
@@ -182,108 +182,132 @@ async def RPAexecutioner_GoldenProcessStart(filename=None, sheetname=None, son_k
                 print("Not a payment transfer" + str(payment_information[0][i]))
                 continue
 
-            print(f"Processing row {i}: {payment_information[0][i]}")
-            name_surname = await get_human_name(str(payment_information[0][i]))
-            print(f"Human name retrieved: {name_surname}")
-            
-            if name_surname == prev_human_name:
-                search_new_person = False
-            else:
-                search_new_person = True
-                
-            if name_surname == "ERROR: 404":
-                save_payment_record([name_surname, payment_information[1][i], "NA", "FLAG 404: NAME_NOT_FOUND"])
-                print("Error: name not found" + str(payment_information[0][i]) + "was not attributed to any name")
-                continue
-            else:
-                print("name found: " + name_surname)
-            if name_surname == "PAYMENT_BY_POS":
-                save_payment_record([name_surname, payment_information[1][i], "NA", "FLAG: POS"])
-                print("Payment by pos, skipping")
-                continue
-            print(f"Getting payment type for {name_surname} with amount {payment_information[1][i]}")
-            update_processing_status(name_surname, "processing", None, payment_information[1][i])
+            # Wrap all processing in try-catch so one failure doesn't crash everything
+            try:
+                print(f"Processing row {i}: {payment_information[0][i]}")
+                name_surname = await get_human_name(str(payment_information[0][i]))
+                print(f"Human name retrieved: {name_surname}")
 
-            payment_type, current_cache = await get_payment_type(page, name_surname,payment_information[1][i], payment_information[3][i], search_new_person, cached_data=current_cache)
-            print(f"Payment type result: {payment_type}")
-            
-            # Sort so TAKSİT is always last
-            payment_type.sort(key=lambda x: 1 if x[0] == "TAKSİT" else 0)
-            
-            total_paid = payment_information[1][i]
-            payment_entered = 0
-            for info in payment_type:
-                print(f"Processing info: {info}")
-                if info[1] == "FLAG: 404":
-                    payment_entered = total_paid
-                    save_payment_record([name_surname, payment_entered, info[0], "FLAG: 404"])
-                    print("Name not found, skipping")
-                if info[1] == "FLAG: 4000":
-                    payment_entered = 4000
-                    save_payment_record([name_surname, payment_entered, info[0], "FLAG: 4000"])
-                    print("Payment amount is 4000, skipping")
-                    
-                if info[1] == "BORC VAR":
-                    
-                    if info[0] == "UYGULAMA SINAV HARCI":
-                        print(f"Initiating payment: {name_surname}, {info[0]}, {1600}")
-                        await golden_PaymentPaid(page, info[0], 1600)
-                        print("Payment completed.")
-                        await asyncio.sleep(random.uniform(2.1, 3.1))
-                        if (total_paid-1600)%500 == 0:
-                            payment_entered = 1600
-                            total_paid -= 1600
-                        else:
-                            payment_entered = 1350
-                            total_paid -= 1350
-                    if info[0] == "YAZILI SINAV HARCI":
-                        print(f"Initiating payment: {name_surname}, {info[0]}, {1200}")
-                        await golden_PaymentPaid(page, info[0], 1200)
-                        print("Payment completed.")
-                        await asyncio.sleep(random.uniform(2.1, 3.1))
-                        if (total_paid-1200)%500 == 0:
-                            payment_entered = 1200
-                            total_paid -= 1200
-                        else:
-                            payment_entered = 900
-                            total_paid -= 900
-                    if info[0] == "BELGE ÜCRETİ":
-                        print(f"Initiating payment: {name_surname}, {info[0]}, {1000}")
-                        await golden_PaymentPaid(page, info[0], 1000)
-                        print("Payment completed.")
-                        await asyncio.sleep(random.uniform(2.1, 3.1))
-                        total_paid -= 1000
-                        payment_entered = 1000
-                    if info[0] == "ÖZEL DERS":
-                        print(f"Initiating payment: {name_surname}, {info[0]}, {4000}")
-                        await golden_PaymentPaid(page, info[0], 4000)
-                        print("Payment completed.")
-                        await asyncio.sleep(random.uniform(2.1, 3.1))
-                        total_paid -= 4000
-                        payment_entered = 1000
-                    if info[0] == "BAŞARISIZ ADAY EĞİTİMİ":
-                        print(f"Initiating payment: {name_surname}, {info[0]}, {4000}")
-                        await golden_PaymentPaid(page, info[0], 4000)
-                        print("Payment completed.")
-                        await asyncio.sleep(random.uniform(2.1, 3.1))
-                        total_paid -= 4000
-                        payment_entered = 4000
-                    if info[0] == "TAKSİT":
-                        print(f"Initiating payment: {name_surname}, {info[0]}, {total_paid}")
-                        await golden_PaymentPaid(page, info[0], total_paid)
-                        print("Payment completed.")
-                        await asyncio.sleep(random.uniform(2.1, 3.1))
+                if name_surname == prev_human_name:
+                    search_new_person = False
+                else:
+                    search_new_person = True
+
+                if name_surname == "ERROR: 404":
+                    update_processing_status(str(payment_information[0][i]), "flagged", "NA", payment_information[1][i])
+                    save_payment_record([name_surname, payment_information[1][i], "NA", "FLAG 404: NAME_NOT_FOUND"])
+                    print("Error: name not found" + str(payment_information[0][i]) + "was not attributed to any name")
+                    continue
+                else:
+                    print("name found: " + name_surname)
+                if name_surname == "PAYMENT_BY_POS":
+                    save_payment_record([name_surname, payment_information[1][i], "NA", "FLAG: POS"])
+                    print("Payment by pos, skipping")
+                    continue
+                print(f"Getting payment type for {name_surname} with amount {payment_information[1][i]}")
+                update_processing_status(name_surname, "processing", None, payment_information[1][i])
+
+                payment_type, current_cache = await get_payment_type(page, name_surname,payment_information[1][i], payment_information[3][i], search_new_person, cached_data=current_cache)
+                print(f"Payment type result: {payment_type}")
+
+                # Sort so TAKSİT is always last
+                payment_type.sort(key=lambda x: 1 if x[0] == "TAKSİT" else 0)
+
+                total_paid = payment_information[1][i]
+                payment_entered = 0
+                for info in payment_type:
+                    print(f"Processing info: {info}")
+                    if info[1] == "FLAG: 404":
                         payment_entered = total_paid
-                        total_paid -= total_paid
-                    update_processing_status(name_surname, "almost_completed", info[0], payment_entered)
-                    save_payment_record([name_surname, payment_entered, info[0], "PAID"])
-                    print("round done")
-                #elif info[1] == "BORC YOK":
-                #    golden_PaymentOwed(page, info[0], payment_information[1][i])
-                #    golden_PaymentPaid(page, info[0], payment_information[1][i])
-            
-            prev_human_name = name_surname
+                        update_processing_status(name_surname, "flagged", info[0], payment_entered)
+                        save_payment_record([name_surname, payment_entered, info[0], "FLAG: 404"])
+                        print("Name not found, skipping")
+                    if info[1] == "FLAG: 4000":
+                        payment_entered = 4000
+                        update_processing_status(name_surname, "flagged", info[0], payment_entered)
+                        save_payment_record([name_surname, payment_entered, info[0], "FLAG: 4000"])
+                        print("Payment amount is 4000, skipping")
 
+                    if info[1] == "BORC VAR":
+
+                        if info[0] == "UYGULAMA SINAV HARCI":
+                            print(f"Initiating payment: {name_surname}, {info[0]}, {1600}")
+                            await golden_PaymentPaid(page, info[0], 1600)
+                            print("Payment completed.")
+                            await asyncio.sleep(random.uniform(2.1, 3.1))
+                            if (total_paid-1600)%500 == 0:
+                                payment_entered = 1600
+                                total_paid -= 1600
+                            else:
+                                payment_entered = 1350
+                                total_paid -= 1350
+                        if info[0] == "YAZILI SINAV HARCI":
+                            print(f"Initiating payment: {name_surname}, {info[0]}, {1200}")
+                            await golden_PaymentPaid(page, info[0], 1200)
+                            print("Payment completed.")
+                            await asyncio.sleep(random.uniform(2.1, 3.1))
+                            if (total_paid-1200)%500 == 0:
+                                payment_entered = 1200
+                                total_paid -= 1200
+                            else:
+                                payment_entered = 900
+                                total_paid -= 900
+                        if info[0] == "BELGE ÜCRETİ":
+                            print(f"Initiating payment: {name_surname}, {info[0]}, {1000}")
+                            await golden_PaymentPaid(page, info[0], 1000)
+                            print("Payment completed.")
+                            await asyncio.sleep(random.uniform(2.1, 3.1))
+                            total_paid -= 1000
+                            payment_entered = 1000
+                        if info[0] == "ÖZEL DERS":
+                            print(f"Initiating payment: {name_surname}, {info[0]}, {4000}")
+                            await golden_PaymentPaid(page, info[0], 4000)
+                            print("Payment completed.")
+                            await asyncio.sleep(random.uniform(2.1, 3.1))
+                            total_paid -= 4000
+                            payment_entered = 1000
+                        if info[0] == "BAŞARISIZ ADAY EĞİTİMİ":
+                            print(f"Initiating payment: {name_surname}, {info[0]}, {4000}")
+                            await golden_PaymentPaid(page, info[0], 4000)
+                            print("Payment completed.")
+                            await asyncio.sleep(random.uniform(2.1, 3.1))
+                            total_paid -= 4000
+                            payment_entered = 4000
+                        if info[0] == "TAKSİT":
+                            print(f"Initiating payment: {name_surname}, {info[0]}, {total_paid}")
+                            await golden_PaymentPaid(page, info[0], total_paid)
+                            print("Payment completed.")
+                            await asyncio.sleep(random.uniform(2.1, 3.1))
+                            payment_entered = total_paid
+                            total_paid -= total_paid
+                        update_processing_status(name_surname, "almost_completed", info[0], payment_entered)
+                        save_payment_record([name_surname, payment_entered, info[0], "PAID"])
+                        print("round done")
+                    #elif info[1] == "BORC YOK":
+                    #    golden_PaymentOwed(page, info[0], payment_information[1][i])
+                    #    golden_PaymentPaid(page, info[0], payment_information[1][i])
+
+                prev_human_name = name_surname
+
+            except Exception as e:
+                # Log the error, update status to failed, save record, and continue to next person
+                error_msg = str(e)
+                print(f"ERROR processing row {i}: {error_msg}")
+                try:
+                    # Try to get name for error record (may fail if error was in get_human_name)
+                    error_name = name_surname if 'name_surname' in dir() else str(payment_information[0][i])
+                    update_processing_status(error_name, "failed", None, payment_information[1][i])
+                    save_payment_record([error_name, payment_information[1][i], "NA", f"ERROR: {error_msg[:50]}"])
+                except:
+                    save_payment_record(["UNKNOWN", payment_information[1][i], "NA", f"ERROR: {error_msg[:50]}"])
+                # Reset search state and continue to next person
+                search_new_person = True
+                current_cache = None
+                continue
+
+        # Excel fully traversed - update status to completed
+        update_processing_status("TAMAMLANDI", "completed", None, None)
+        print("All rows processed - Excel traversal complete")
 
         is_bot = await page.evaluate("navigator.webdriver")
         print(f"Am I a bot? {is_bot}")
