@@ -39,13 +39,7 @@ jobs:
 
       - name: Create icon (Windows)
         if: runner.os == 'Windows'
-        run: |
-          python -c "
-          from PIL import Image
-          img = Image.open('public/goldenrat.png').convert('RGBA')
-          sizes = [(16,16), (32,32), (48,48), (64,64), (128,128), (256,256)]
-          img.save('icon.ico', format='ICO', sizes=sizes)
-          "
+        run: python -c "from PIL import Image; img = Image.open('public/goldenrat.png').convert('RGBA'); img.save('icon.ico', format='ICO', sizes=[(16,16), (32,32), (48,48), (64,64), (128,128), (256,256)])"
 
       - name: Create icon (macOS)
         if: runner.os == 'macOS'
