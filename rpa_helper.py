@@ -2,6 +2,7 @@ import asyncio
 import random
 import time
 import os
+import sys
 import csv
 import json
 from twilio.rest import Client
@@ -224,7 +225,9 @@ async def human_type(page, selector, text):
     await element.click()
 
     # Clear the field by selecting all and deleting (human-like behavior)
-    await page.keyboard.press("Control+a")
+    # Use Cmd+A on macOS, Ctrl+A on Linux/Windows
+    select_all_key = "Meta+a" if sys.platform == "darwin" else "Control+a"
+    await page.keyboard.press(select_all_key)
     await asyncio.sleep(random.uniform(0.1, 0.2))
 
     await element.type(text, delay=random.randint(50,150))
@@ -610,27 +613,27 @@ async def get_payment_type(page, name_surname, payment_amount, date_of_payment, 
         # Check OWED first with exact amount match - person may have retaken exam after failing
         if check_owed_with_amount("YZL. SNV. HARCI", payment_owed, payment_amount) or check_owed_with_amount("YAZILI SINAV HARCI", payment_owed, payment_amount):
             print(f"Logic: {payment_amount} -> YAZILI SINAV HARCI (BORC VAR - amount matches)")
-            payment_types.append(["YAZILI SINAV HARCI", "BORC VAR"])
+            payment_types.append(["YAZILI SINAV HARCI", "BORC VAR", payment_amount])
             return payment_types, cached_data
         elif check_paid("YZL. SNV. HARCI", payments_paid) or check_paid("YAZILI SINAV HARCI", payments_paid):
             print(f"Logic: {payment_amount} -> YAZILI SINAV HARCI (BORC ODENMIS)")
-            payment_types.append(["YAZILI SINAV HARCI", "BORC ODENMIS"])
+            payment_types.append(["YAZILI SINAV HARCI", "BORC ODENMIS", payment_amount])
             return payment_types, cached_data
         else:
-            payment_types.append(["YAZILI SINAV HARCI", "BORC YOK"])
+            payment_types.append(["YAZILI SINAV HARCI", "BORC YOK", payment_amount])
             return payment_types, cached_data
     if payment_amount == 1600 or payment_amount == 1350:
         # Check OWED first with exact amount match - person may have retaken exam after failing
         if check_owed_with_amount("UYG. SNV. HARCI", payment_owed, payment_amount) or check_owed_with_amount("UYGULAMA SINAV HARCI", payment_owed, payment_amount):
             print(f"Logic: {payment_amount} -> UYGULAMA SINAV HARCI (BORC VAR - amount matches)")
-            payment_types.append(["UYGULAMA SINAV HARCI", "BORC VAR"])
+            payment_types.append(["UYGULAMA SINAV HARCI", "BORC VAR", payment_amount])
             return payment_types, cached_data
         elif check_paid("UYG. SNV. HARCI", payments_paid) or check_paid("UYGULAMA SINAV HARCI", payments_paid):
             print(f"Logic: {payment_amount} -> UYGULAMA SINAV HARCI (BORC ODENMIS)")
-            payment_types.append(["UYGULAMA SINAV HARCI", "BORC ODENMIS"])
+            payment_types.append(["UYGULAMA SINAV HARCI", "BORC ODENMIS", payment_amount])
             return payment_types, cached_data
         else:
-            payment_types.append(["UYGULAMA SINAV HARCI", "BORC YOK"])
+            payment_types.append(["UYGULAMA SINAV HARCI", "BORC YOK", payment_amount])
             return payment_types, cached_data
 
     if payment_amount == 4000 and check_owed("BAŞARISIZ ADAY EĞİTİMİ", payment_owed):
@@ -638,6 +641,11 @@ async def get_payment_type(page, name_surname, payment_amount, date_of_payment, 
         return payment_types, cached_data
     elif payment_amount == 4000 and check_paid("BAŞARISIZ ADAY EĞİTİMİ", payments_paid):
         payment_types.append(["BAŞARISIZ ADAY EĞİTİMİ", "BORC ODENMIS"])
+        return payment_types, cached_data
+
+    # If exactly 4000 and there's a 4000 taksit owed, pay it as TAKSİT (not ambiguous)
+    if payment_amount == 4000 and check_owed_with_amount(None, payments_taksit_owed, 4000):
+        payment_types.append(["TAKSİT", "BORC VAR"])
         return payment_types, cached_data
 
     if payment_amount == 4000:
@@ -695,13 +703,13 @@ async def get_payment_type(page, name_surname, payment_amount, date_of_payment, 
             elif check_paid("UYG. SNV. HARCI", payments_paid) or check_paid("UYGULAMA SINAV HARCI", payments_paid):
                 payment_types.append(["UYGULAMA SINAV HARCI", "BORC ODENMIS"])
                 payment_types.append(["TAKSİT", "BORC ODENMIS"])
-        elif (payment_copy - 1600)%500 == 0 and payment_copy - 1600 == 4000 and (check_owed("UYG. SNV. HARCI", payment_owed) or check_owed("UYGULAMA SINAV HARCI", payment_owed) or check_paid("UYG. SNV. HARCI", payments_paid) or check_paid("UYGULAMA SINAV HARCI", payments_paid)):
+        elif (payment_copy - 1600)%500 == 0 and payment_copy - 1600 == 4000 and (check_owed("UYG. SNV. HARCI", payment_owed) or check_owed("UYGULAMA SINAV HARCI", payment_owed) or check_paid("UYG. SNV. HARCI", payments_paid) or check_paid("UYGULAMA SINAV HARCI", payments_paid)) and check_owed_with_amount(None, payments_taksit_owed, 4000):
             if (check_owed("UYG. SNV. HARCI", payment_owed) or check_owed("UYGULAMA SINAV HARCI", payment_owed)):
                 payment_types.append(["UYGULAMA SINAV HARCI", "BORC VAR"])
-                payment_types.append(["DORTBIN", "FLAG: 4000"])
+                payment_types.append(["TAKSİT", "BORC VAR"])
             elif check_paid("UYG. SNV. HARCI", payments_paid) or check_paid("UYGULAMA SINAV HARCI", payments_paid):
                 payment_types.append(["UYGULAMA SINAV HARCI", "BORC ODENMIS"])
-                payment_types.append(["DORTBIN", "BORC ODENMIS"])
+                payment_types.append(["TAKSİT", "BORC ODENMIS"])
             elif check_owed("YZL. SNV. HARCI", payment_owed) or check_owed("YAZILI SINAV HARCI", payment_owed):
                 payment_types.append(["UYGULAMA SINAV HARCI", "BORC YOK"])
         elif (payment_copy - 1200)%500 == 0 and payment_copy - 1200 != 4000 and (check_owed("YZL. SNV. HARCI", payment_owed) or check_owed("YAZILI SINAV HARCI", payment_owed) or check_paid("YZL. SNV. HARCI", payments_paid) or check_paid("YAZILI SINAV HARCI", payments_paid)):    
@@ -715,16 +723,16 @@ async def get_payment_type(page, name_surname, payment_amount, date_of_payment, 
                 payment_types.append(["YAZILI SINAV HARCI", "BORC YOK"])
                 payment_types.append(["DORTBIN", "FLAG: 4000"])
 
-        elif (payment_copy - 1200)%500 == 0 and payment_copy - 1200 == 4000 and (check_owed("YZL. SNV. HARCI", payment_owed) or check_owed("YAZILI SINAV HARCI", payment_owed) or check_paid("YZL. SNV. HARCI", payments_paid) or check_paid("YAZILI SINAV HARCI", payments_paid)):
+        elif (payment_copy - 1200)%500 == 0 and payment_copy - 1200 == 4000 and (check_owed("YZL. SNV. HARCI", payment_owed) or check_owed("YAZILI SINAV HARCI", payment_owed) or check_paid("YZL. SNV. HARCI", payments_paid) or check_paid("YAZILI SINAV HARCI", payments_paid)) and check_owed_with_amount(None, payments_taksit_owed, 4000):
             if check_owed("YZL. SNV. HARCI", payment_owed) or check_owed("YAZILI SINAV HARCI", payment_owed):
                 payment_types.append(["YAZILI SINAV HARCI", "BORC VAR"])
-                payment_types.append(["DORTBIN", "FLAG: 4000"])
-            elif check_paid("YZL. SNV. HARCI", payments_paid) or check_paid("YAZILI SINAV HARCI", payments_paid):
+                payment_types.append(["TAKSİT", "BORC VAR"])
+            elif check_paid("YZL. SNV. HARCI", payments_paid) or check_paid("YAZILI SINAV HARCI", payments_paid) and check_date_if_paid(date_of_payment, payments_taksit_paid):
                 payment_types.append(["UYGULAMA SINAV HARCI", "BORC ODENMIS"])
-                payment_types.append(["DORTBIN", "BORC ODENMIS"])
+                payment_types.append(["TAKSİT", "BORC ODENMIS"])
             else:
                 payment_types.append(["YAZILI SINAV HARCI", "BORC YOK"])
-                payment_types.append(["DORTBIN", "FLAG: 4000"])
+                payment_types.append(["TAKSİT", "BORC YOK"])
         
         elif (payment_copy - 1000)%500 == 0 and payment_copy - 1000 != 4000 and (check_owed("BELGE ÜCRETİ", payment_owed) or check_paid("BELGE ÜCRETİ", payments_paid)):
             if  check_owed("BELGE ÜCRETİ", payment_owed):
@@ -737,10 +745,10 @@ async def get_payment_type(page, name_surname, payment_amount, date_of_payment, 
                 else: 
                     payment_types.append(["TAKSİT", "BORC VAR"])
         
-        elif (payment_copy - 1000)%500 == 0 and payment_copy - 1000 == 4000 and (check_owed("BELGE ÜCRETİ", payment_owed) or check_paid("BELGE ÜCRETİ", payments_paid)):
+        elif (payment_copy - 1000)%500 == 0 and payment_copy - 1000 == 4000 and (check_owed("BELGE ÜCRETİ", payment_owed) or check_paid("BELGE ÜCRETİ", payments_paid)) and check_owed_with_amount(None, payments_taksit_owed, 4000) :
             if check_owed("BELGE ÜCRETİ", payment_owed):
                 payment_types.append(["BELGE ÜCRETİ", "BORC VAR"])
-                payment_types.append(["DORTBIN", "FLAG: 4000"])
+                payment_types.append(["TAKSİT", "BORC VAR"])
             elif check_paid("BELGE ÜCRETİ", payments_paid):
                 payment_types.append(["BELGE ÜCRETİ", "BORC ODENMIS"])
                 payment_types.append(["DORTBIN", "BORC ODENMIS"])

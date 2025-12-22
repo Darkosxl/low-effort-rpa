@@ -21,6 +21,18 @@ import dotenv
 import sys
 import logging
 
+# Fix multiprocessing for PyInstaller on macOS
+# macOS uses 'spawn' by default which doesn't work well with PyInstaller bundles
+# 'fork' ensures child processes inherit parent's state (paths, imports, etc.)
+if sys.platform != 'win32':
+    try:
+        multiprocessing.set_start_method('fork', force=True)
+    except RuntimeError:
+        pass  # Already set
+
+# Required for PyInstaller multiprocessing support
+multiprocessing.freeze_support()
+
 dotenv.load_dotenv()
 
 app = Flask(__name__)

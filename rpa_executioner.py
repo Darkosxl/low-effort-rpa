@@ -267,27 +267,21 @@ async def RPAexecutioner_GoldenProcessStart(filename=None, sheetname=None, son_k
                     if info[1] == "BORC VAR":
 
                         if info[0] == "UYGULAMA SINAV HARCI":
-                            print(f"Initiating payment: {name_surname}, {info[0]}, {1600}")
-                            await golden_PaymentPaid(page, info[0], 1600)
+                            uygulama_amount = info[2] if len(info) > 2 else 1600
+                            print(f"Initiating payment: {name_surname}, {info[0]}, {uygulama_amount}")
+                            await golden_PaymentPaid(page, info[0], uygulama_amount)
                             print("Payment completed.")
                             await asyncio.sleep(random.uniform(2.1, 3.1))
-                            if (total_paid-1600)%500 == 0:
-                                payment_entered = 1600
-                                total_paid -= 1600
-                            else:
-                                payment_entered = 1350
-                                total_paid -= 1350
+                            payment_entered = uygulama_amount
+                            total_paid -= uygulama_amount
                         if info[0] == "YAZILI SINAV HARCI":
-                            print(f"Initiating payment: {name_surname}, {info[0]}, {1200}")
-                            await golden_PaymentPaid(page, info[0], 1200)
+                            yazili_amount = info[2] if len(info) > 2 else 1200
+                            print(f"Initiating payment: {name_surname}, {info[0]}, {yazili_amount}")
+                            await golden_PaymentPaid(page, info[0], yazili_amount)
                             print("Payment completed.")
                             await asyncio.sleep(random.uniform(2.1, 3.1))
-                            if (total_paid-1200)%500 == 0:
-                                payment_entered = 1200
-                                total_paid -= 1200
-                            else:
-                                payment_entered = 900
-                                total_paid -= 900
+                            payment_entered = yazili_amount
+                            total_paid -= yazili_amount
                         if info[0] == "BELGE ÜCRETİ":
                             print(f"Initiating payment: {name_surname}, {info[0]}, {1000}")
                             await golden_PaymentPaid(page, info[0], 1000)
