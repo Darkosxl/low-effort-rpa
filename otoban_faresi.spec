@@ -1,7 +1,17 @@
 # -*- mode: python ; coding: utf-8 -*-
+import sys
+import os
 from PyInstaller.utils.hooks import collect_data_files
 
 block_cipher = None
+
+# Platform-specific icon
+if sys.platform == 'win32':
+    app_icon = 'icon.ico'
+elif sys.platform == 'darwin':
+    app_icon = 'icon.icns' if os.path.exists('icon.icns') else None
+else:
+    app_icon = None  # Linux doesn't use embedded icons
 
 # Collect data files from packages that need them
 playwright_stealth_datas = collect_data_files('playwright_stealth')
@@ -52,7 +62,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon='icon.ico',
+    icon=app_icon,
 )
 
 coll = COLLECT(

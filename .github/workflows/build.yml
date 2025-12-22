@@ -34,17 +34,56 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install pyinstaller
+          pip install pyinstaller pillow
           pip install -r requirements.txt
+
+      - name: Create icon (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          python -c "
+          from PIL import Image
+          img = Image.open('public/goldenrat.png').convert('RGBA')
+          sizes = [(16,16), (32,32), (48,48), (64,64), (128,128), (256,256)]
+          img.save('icon.ico', format='ICO', sizes=sizes)
+          "
+
+      - name: Create icon (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          mkdir -p icon.iconset
+          python -c "
+          from PIL import Image
+          img = Image.open('public/goldenrat.png').convert('RGBA')
+          sizes = [16, 32, 64, 128, 256, 512]
+          for size in sizes:
+              img.resize((size, size), Image.LANCZOS).save(f'icon.iconset/icon_{size}x{size}.png')
+              if size <= 256:
+                  img.resize((size*2, size*2), Image.LANCZOS).save(f'icon.iconset/icon_{size}x{size}@2x.png')
+          "
+          iconutil -c icns icon.iconset -o icon.icns
 
       - name: Build with PyInstaller
         run: pyinstaller otoban_faresi.spec
+
+      - name: Copy .desktop file (Linux)
+        if: runner.os == 'Linux'
+        run: cp Golden-Mouse-RPA.desktop dist/Golden-Mouse-RPA/
+
+      - name: Zip artifact (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          cd dist
+          zip -r ../${{ matrix.artifact }}.zip Golden-Mouse-RPA
+
+      - name: Zip artifact (Windows)
+        if: runner.os == 'Windows'
+        run: Compress-Archive -Path dist/Golden-Mouse-RPA -DestinationPath ${{ matrix.artifact }}.zip
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
-          path: dist/Golden-Mouse-RPA${{ matrix.extension }}
+          path: ${{ matrix.artifact }}.zip
 
   release:
     needs: build
@@ -60,9 +99,6 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
-          files: |
-            artifacts/Golden-Mouse-RPA-Windows/Golden-Mouse-RPA.exe
-            artifacts/Golden-Mouse-RPA-macOS/Golden-Mouse-RPA
-            artifacts/Golden-Mouse-RPA-Linux/Golden-Mouse-RPA
+          files: artifacts/**/*.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

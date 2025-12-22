@@ -35,8 +35,10 @@ event_log.txt
 # Screenshots
 screenshot*.png
 
-# Icon (generated from PNG)
+# Icons (generated from PNG during build)
 icon.ico
+icon.icns
+icon.iconset/
 
 # Logs
 *.log
